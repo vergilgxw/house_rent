@@ -122,9 +122,9 @@ class RentCrowl():
         small_batch = []
         for x in unfetched_list:
 
-            print x['title']
             time.sleep(self.delay_sec)
             x['time'] = self._get_timestamp(x['link'])
+            print '*',
 
             # if open url failed
             if x['time'] is False:
@@ -136,11 +136,11 @@ class RentCrowl():
             if x['time'] is None:
                 continue
 
-            print x['time']
             small_batch.append(x)
 
             cnt += 1
             if cnt % batch_size == 0:
+                print ""
                 print "scan {}/{} result".format(cnt, len_list)
                 self._update_df(small_batch, write=True)
                 self._update_links()
@@ -375,10 +375,7 @@ if __name__ == "__main__":
 
     zjlist_file = 'zhongjie_list'
 
-
-
     display_days = 5
-
 
     dp = DataDisplayer(data_file, md_file, display_days)
     dp.set_in_set(in_set)
@@ -398,15 +395,11 @@ if __name__ == "__main__":
     n_page = 10
     batch_size = 40
 
-    # clear
-    dp.display(clear = True)
+    dp.display(clear=True)
 
     rc = RentCrowl(data_file, link_file, dp, delay_sec=5) 
-    rc.read_df()
-    rc.read_link()
-    # while(1):
-    rc.crawl_items(urlbase_list, n_page, batch_size)
-            # time.sleep(600)
+    while(1):
+        rc.crawl_items(urlbase_list, n_page, batch_size)
 
 
 
