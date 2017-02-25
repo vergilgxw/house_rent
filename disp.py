@@ -176,7 +176,7 @@ if __name__ == '__main__':
     dp.set_zjlist(zjlist_file)
 
     # while True:
-    dp.display(clear=False)
+    dp.display(clear=True)
         # time.sleep(5)
 
 

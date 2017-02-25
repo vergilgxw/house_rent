@@ -93,7 +93,8 @@ class RentCrowl():
                     return None
                 cnt += 1
                 if cnt % 10 == 0:
-                    print "scan {}/{} pages".format(cnt, n_total_pages)
+                    print "scan {}/{} pages ".format(cnt, n_total_pages),
+                    print datetime.now()
 
                 time.sleep(self.delay_sec)
 
@@ -102,7 +103,8 @@ class RentCrowl():
                 list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')[2:]      
                 allthings += [self._extract_info(x) for x in list_table]
         
-        print 'finish, scanning {} pages'.format(n_total_pages)
+        print 'finish, scanning {} pages '.format(n_total_pages),
+        print datetime.now()
         return allthings
 
     def _scan_items(self, allthings, batch_size):
@@ -136,7 +138,8 @@ class RentCrowl():
             cnt += 1
             if cnt % batch_size == 0:
                 print ""
-                print "scan {}/{} result".format(cnt, len_list)
+                print "scan {}/{} result ".format(cnt, len_list),
+                print datetime.now()
                 self._update_df(small_batch, write=True)
                 self._update_links()
                 small_batch = []
@@ -144,13 +147,14 @@ class RentCrowl():
                 if self.displayer is not None:
                     self.displayer.display()
 
-        self._update_df(small_batch, write = True)
+        self._update_df(small_batch, write=True)
         self._update_links()
 
         if self.displayer is not None:
             self.displayer.display()
 
-        print 'finish get time information'
+        print 'finish get time information ',
+        print datetime.now()
 
     def _open_url(self, url, text=""):
         """
@@ -192,7 +196,7 @@ class RentCrowl():
         print "drop {} duplicated items".format(len_1-len_2)
 
         if write:
-            df_update.to_csv(self.df_file, sep = ',', quotechar='"', encoding='utf-8', data_format = '%Y-%m-%d %H:%M:%S')
+            df_update.to_csv(self.df_file, sep = ',', quotechar='"', encoding='utf-8', date_format='%Y-%m-%d %H:%M:%S')
 
         self.df = df_update
         self.author = set(self.df['author_link'])
@@ -251,7 +255,7 @@ if __name__ == "__main__":
                    'https://www.douban.com/group/opking/discussion?start=',
                    'https://www.douban.com/group/276176/discussion?start=']
 
-    n_page = 5 
+    n_page = 10
     batch_size = 20
 
     rc = RentCrowl(data_file, link_file, delay_sec=5) 
