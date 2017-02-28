@@ -255,7 +255,7 @@ if __name__ == "__main__":
                    'https://www.douban.com/group/opking/discussion?start=',
                    'https://www.douban.com/group/276176/discussion?start=']
 
-    n_page = 10
+    n_page = 5
     batch_size = 20
 
     rc = RentCrowl(data_file, link_file, delay_sec=5) 
