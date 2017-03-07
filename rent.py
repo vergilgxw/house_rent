@@ -7,6 +7,7 @@ import re
 import time
 import pdb
 import pandas as pd
+import sys
 
 from os.path import isfile
 
@@ -32,6 +33,7 @@ class RentCrowl():
 
         self._read_df()
         self._read_link()
+        self._last_open_time = None
 
     def crawl_items(self, urlbase_list, n_page=10, batch_size=40):
 
@@ -92,11 +94,14 @@ class RentCrowl():
                 if f is None:
                     return None
                 cnt += 1
+                print '*',
+                sys.stdout.flush()
                 if cnt % 10 == 0:
+                    print ""
                     print "scan {}/{} pages ".format(cnt, n_total_pages),
                     print datetime.now()
 
-                time.sleep(self.delay_sec)
+                # time.sleep(self.delay_sec)
 
                 plain_text = str(f.read())
                 soup = BeautifulSoup(plain_text, 'lxml')
@@ -119,9 +124,10 @@ class RentCrowl():
         small_batch = []
         for x in unfetched_list:
 
-            time.sleep(self.delay_sec)
+            # time.sleep(self.delay_sec)
             x['time'] = self._get_timestamp(x['link'])
             print '*',
+            sys.stdout.flush()
 
             # if open url failed
             if x['time'] is False:
@@ -163,6 +169,12 @@ class RentCrowl():
         err_cnt = 0
         while True:
             try:
+                pdb.set_trace()
+                if self._last_open_time is not None:
+                    timediff = (datetime.now() - self._last_open_time).total_seconds()
+                    time.sleep(abs(self.delay_sec - timediff))
+
+                self._last_open_time = datetime.now()
                 f = urllib2.urlopen(url)
                 break;
             except (urllib2.HTTPError, urllib2.URLError) as e:
@@ -255,10 +267,10 @@ if __name__ == "__main__":
                    'https://www.douban.com/group/opking/discussion?start=',
                    'https://www.douban.com/group/276176/discussion?start=']
 
-    n_page = 5
+    n_page = 1 
     batch_size = 20
 
-    rc = RentCrowl(data_file, link_file, delay_sec=5) 
+    rc = RentCrowl(data_file, link_file, delay_sec=1) 
     while(1):
         rc.crawl_items(urlbase_list, n_page, batch_size)
 
