@@ -88,6 +88,8 @@ class RentCrowl():
         n_total_pages = len(urlbase_list) * n_page
         print "scanning item list........"
 
+        
+        start_time = datetime.now()
         for urlbase in urlbase_list:
             for i in xrange(n_page):
                 f = self._open_url(urlbase+str(i*self.items_page), "in reading item list: ")
@@ -99,7 +101,10 @@ class RentCrowl():
                 if cnt % 10 == 0:
                     print ""
                     print "scan {}/{} pages ".format(cnt, n_total_pages),
-                    print datetime.now()
+                    end_time = datetime.now()
+                    start_time, timediff = end_time, (end_time-start_time).total_seconds()
+                    print end_time
+                    print "averaged_time: {}s".format(timediff/10)
 
                 # time.sleep(self.delay_sec)
 
@@ -108,6 +113,7 @@ class RentCrowl():
                 list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')[2:]      
                 allthings += [self._extract_info(x) for x in list_table]
         
+        print '' 
         print 'finish, scanning {} pages '.format(n_total_pages),
         print datetime.now()
         return allthings
@@ -120,6 +126,7 @@ class RentCrowl():
         len_list = len(unfetched_list)
         print "total {} new items".format(len_list)
         cnt = 0
+        start_time = datetime.now()
 
         small_batch = []
         for x in unfetched_list:
@@ -145,7 +152,11 @@ class RentCrowl():
             if cnt % batch_size == 0:
                 print ""
                 print "scan {}/{} result ".format(cnt, len_list),
-                print datetime.now()
+                end_time = datetime.now()
+                start_time, timediff = end_time, (end_time-start_time).total_seconds()
+                print end_time
+                print "averaged_time: {}s".format(timediff/batch_size)
+
                 self._update_df(small_batch, write=True)
                 self._update_links()
                 small_batch = []
@@ -169,10 +180,11 @@ class RentCrowl():
         err_cnt = 0
         while True:
             try:
-                pdb.set_trace()
                 if self._last_open_time is not None:
                     timediff = (datetime.now() - self._last_open_time).total_seconds()
-                    time.sleep(abs(self.delay_sec - timediff))
+                    # print "timediff = {}".format(timediff)
+                    if self.delay_sec > timediff:
+                        time.sleep(self.delay_sec - timediff)
 
                 self._last_open_time = datetime.now()
                 f = urllib2.urlopen(url)
@@ -267,10 +279,10 @@ if __name__ == "__main__":
                    'https://www.douban.com/group/opking/discussion?start=',
                    'https://www.douban.com/group/276176/discussion?start=']
 
-    n_page = 1 
+    n_page = 10
     batch_size = 20
 
-    rc = RentCrowl(data_file, link_file, delay_sec=1) 
+    rc = RentCrowl(data_file, link_file, delay_sec=4) 
     while(1):
         rc.crawl_items(urlbase_list, n_page, batch_size)
 
