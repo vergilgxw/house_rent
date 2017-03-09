@@ -8,6 +8,7 @@ import time
 import pdb
 import pandas as pd
 import sys
+import socket
 
 from os.path import isfile
 
@@ -92,8 +93,8 @@ class RentCrowl():
         start_time = datetime.now()
         for urlbase in urlbase_list:
             for i in xrange(n_page):
-                f = self._open_url(urlbase+str(i*self.items_page), "in reading item list: ")
-                if f is None:
+                plain_text = self._open_url(urlbase+str(i*self.items_page), "in reading item list: ")
+                if plain_text is None:
                     return None
                 cnt += 1
                 print '*',
@@ -108,7 +109,6 @@ class RentCrowl():
 
                 # time.sleep(self.delay_sec)
 
-                plain_text = str(f.read())
                 soup = BeautifulSoup(plain_text, 'lxml')
                 list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')[2:]      
                 allthings += [self._extract_info(x) for x in list_table]
@@ -177,6 +177,7 @@ class RentCrowl():
         """
         try 10 times 
         """
+        text = None
         err_cnt = 0
         while True:
             try:
@@ -187,18 +188,27 @@ class RentCrowl():
                         time.sleep(self.delay_sec - timediff)
 
                 self._last_open_time = datetime.now()
-                f = urllib2.urlopen(url)
-                break;
-            except (urllib2.HTTPError, urllib2.URLError) as e:
+                f = urllib2.urlopen(url, timeout=15)
+                text = str(f.read())
+                return text
+            except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
                 print text, e
                 if err_cnt < 10:
                     err_cnt += 1
-                    print "sleep for 10 second and try again"
-                    time.sleep(10)
-                else:
+                    print "sleep for 5 second and try again"
+                    time.sleep(5)
+                elif self._internet_on():
                     print "> 10 failures, stop"
                     return None
-        return f
+                else:
+                    while True:
+                        print "internet disconected, press any key when ok"
+                        raw_input()
+                        if self._internet_on():
+                            print "internet connected, continue"
+                            err_cnt = 0
+                            break
+
 
     def _update_df(self, new_items, write=True):
         # filter_items = [x for x in new_items if x['time']]
@@ -239,11 +249,11 @@ class RentCrowl():
         return None if no timestamp information
         """
         
-        f = self._open_url(href, text="in getting timestamp: ")
-        if f is None:
+        text = self._open_url(href, text="in getting timestamp: ")
+        if text is None:
             return False 
         
-        soup = BeautifulSoup(str(f.read()), 'lxml')
+        soup = BeautifulSoup(text, 'lxml')
         time_info = soup.find(name='div', class_='topic-doc')
         try:
             ts = datetime.strptime(time_info.find(name='span', class_='color-green').string, '%Y-%m-%d %H:%M:%S')
@@ -264,6 +274,12 @@ class RentCrowl():
         return info
 
 
+    def _internet_on(self):
+        try:
+            urllib2.urlopen('http://www.baidu.com', timeout=10)
+            return True
+        except urllib2.URLError as err: 
+            return False
 
 if __name__ == "__main__":
 
@@ -279,7 +295,7 @@ if __name__ == "__main__":
                    'https://www.douban.com/group/opking/discussion?start=',
                    'https://www.douban.com/group/276176/discussion?start=']
 
-    n_page = 10
+    n_page = 1
     batch_size = 20
 
     rc = RentCrowl(data_file, link_file, delay_sec=4) 

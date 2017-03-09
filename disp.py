@@ -49,6 +49,11 @@ class DataDisplayer():
 
         link_set = set()
         # search for existing link in md file
+        if not isfile(self.md_file):
+            print "md file not exist, will create on"
+            with open(self.md_file, 'wb') as f:
+                pass
+
         with open(self.md_file, 'rb') as f:   
             pattern = re.compile(r'- \[.*?\]\((.*?)\)')
             for line in f:  
@@ -176,7 +181,7 @@ if __name__ == '__main__':
     dp.set_zjlist(zjlist_file)
 
     # while True:
-    dp.display(clear=True)
+    dp.display(clear=False)
         # time.sleep(5)
 
 
