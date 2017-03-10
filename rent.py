@@ -8,7 +8,7 @@ import time
 import pdb
 import pandas as pd
 import sys
-import socket
+import socket, ssl
 
 from os.path import isfile
 
@@ -94,10 +94,12 @@ class RentCrowl():
         for urlbase in urlbase_list:
             for i in xrange(n_page):
                 plain_text = self._open_url(urlbase+str(i*self.items_page), "in reading item list: ")
-                if plain_text is None:
-                    return None
                 cnt += 1
-                print '*',
+                if plain_text is not None: 
+                    print 'o',
+                else:
+                    print 'x',
+
                 sys.stdout.flush()
                 if cnt % 10 == 0:
                     print ""
@@ -107,11 +109,10 @@ class RentCrowl():
                     print end_time
                     print "averaged_time: {}s".format(timediff/10)
 
-                # time.sleep(self.delay_sec)
-
-                soup = BeautifulSoup(plain_text, 'lxml')
-                list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')[2:]      
-                allthings += [self._extract_info(x) for x in list_table]
+                if plain_text is not None:
+                    soup = BeautifulSoup(plain_text, 'lxml')
+                    list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')[2:]      
+                    allthings += [self._extract_info(x) for x in list_table]
         
         print '' 
         print 'finish, scanning {} pages '.format(n_total_pages),
@@ -130,25 +131,22 @@ class RentCrowl():
 
         small_batch = []
         for x in unfetched_list:
-
-            # time.sleep(self.delay_sec)
             x['time'] = self._get_timestamp(x['link'])
-            print '*',
+            if x['time'] is not False and x['time'] is not None:
+                print 'o',
+            else:
+                print 'x',
+
             sys.stdout.flush()
+            cnt += 1
 
             # if open url failed
-            if x['time'] is False:
-                continue
+            if x['time'] is not False:
+                self.links.add(x['link'])
+                # if no time information
+                if x['time'] is not None:
+                    small_batch.append(x)
 
-            self.links.add(x['link'])
-            
-            # if no time information
-            if x['time'] is None:
-                continue
-
-            small_batch.append(x)
-
-            cnt += 1
             if cnt % batch_size == 0:
                 print ""
                 print "scan {}/{} result ".format(cnt, len_list),
@@ -176,8 +174,9 @@ class RentCrowl():
     def _open_url(self, url, text=""):
         """
         try 10 times 
+        if fail, return none
         """
-        text = None
+        url_text = None
         err_cnt = 0
         while True:
             try:
@@ -189,16 +188,17 @@ class RentCrowl():
 
                 self._last_open_time = datetime.now()
                 f = urllib2.urlopen(url, timeout=15)
-                text = str(f.read())
-                return text
-            except (urllib2.HTTPError, urllib2.URLError, socket.timeout) as e:
-                print text, e
+                url_text = str(f.read())
+                return url_text
+            except (urllib2.HTTPError, urllib2.URLError, socket.timeout, ssl.SSLError) as e:
+                print text
+                print "{}: try to open {}".format(err_cnt+1, url), e
                 if err_cnt < 10:
                     err_cnt += 1
                     print "sleep for 5 second and try again"
                     time.sleep(5)
                 elif self._internet_on():
-                    print "> 10 failures, stop"
+                    print "> 10 failures, skip"
                     return None
                 else:
                     while True:
@@ -295,7 +295,7 @@ if __name__ == "__main__":
                    'https://www.douban.com/group/opking/discussion?start=',
                    'https://www.douban.com/group/276176/discussion?start=']
 
-    n_page = 1
+    n_page = 5
     batch_size = 20
 
     rc = RentCrowl(data_file, link_file, delay_sec=4) 
