@@ -12,28 +12,53 @@ import socket, ssl
 
 from os.path import isfile
 
+import sqlite3 
+
 def date_parser(s):
     return pd.datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
 
+def create_items_table(conn):
+    print "item table not exist, will create one"
+    conn.execute(
+        "create table items("
+        "time timestamp,"
+        "title text,"
+        "link text unique,"
+        "author text,"
+        "author_link text)")
+    conn.execute("create index idx on items (time)")
+    conn.commit()
+
+def create_links_table(conn):
+    print "link table not exist, will create one"
+    conn.execute(
+        "create table links("
+        "link text unique)")
+    conn.commit()
+
+
 class RentCrowl():
-    def __init__(self, df_file, link_file, displayer=None, delay_sec=1.0):
+    def __init__(self, db_file, link_file, delay_sec=1.0):
         """ 
         df_file: file store data
         link_file: file store accessed link
-        displayer: a class to handle the format information and display
         delay_sec: seconds to delay between two html access
         """
 
         self.items_page = 25
-        self.df_file = df_file 
+        # self.df_file = df_file 
+        self.db_file = db_file
         self.link_file = link_file
-        self.displayer = displayer
 
         self.headers = ['title', 'link', 'author', 'author_link']
         self.delay_sec = delay_sec;
 
-        self._read_df()
-        self._read_link()
+        self.db_constructor = {"items": create_items_table, 
+                "links": create_links_table}
+
+        self._read_db()
+        # self._read_df()
+        # self._read_link()
         self._last_open_time = None
 
     def crawl_items(self, urlbase_list, n_page=10, batch_size=40):
@@ -45,42 +70,22 @@ class RentCrowl():
         allthings = self._scan_list(urlbase_list, n_page)
         self._scan_items(allthings, batch_size)
 
-    def _read_df(self):
+    def _read_db(self):
         """
-        read data file, if no file, create one
+        read data from sqlite db, if not exist create one
         """
-        print "read data file..." 
-        if isfile(self.df_file):
-            self.df = pd.read_csv(self.df_file, sep=',', header = 0, index_col = 0, 
-                     parse_dates = ['time'], date_parser = date_parser, quotechar = '"', encoding = 'utf-8')
-        
-            self.df = self.df[self.headers]
+        conn = sqlite3.connect(self.db_file)
+        cur = conn.execute("select name from sqlite_master where type='table'")
+        tables = [x[0] for x in cur.fetchall()]
+        for tbl in ["items", "links"]:
+            if tbl not in tables:
+                self.db_constructor[tbl](conn)
 
-            if self.df.empty:
-                print "success, data is empty" 
-                self.links = set()
-                self.author = set()
-            else:
-                self.links = set(self.df['link'])
-                self.author = set(self.df['author_link'])
-                print "success"
-        else:
-            print "data file does not exist, will create one"
-            self.df = None
+        print "load data successfully"
 
-            self.links = set()
-            self.author = set()
+        conn.row_factory = sqlite3.Row
+        self.conn = conn
 
-    def _read_link(self):
-        print "read link file..."
-        if isfile(self.link_file):
-            with open(self.link_file, 'rb+') as f: 
-                contents = [l.strip() for l in f]
-
-            self.links |= set(contents)
-            print "success"
-        else:
-            print "link file does not exist, will create one"
 
     def _scan_list(self, urlbase_list, n_page=10):
 
@@ -119,10 +124,33 @@ class RentCrowl():
         print datetime.now()
         return allthings
 
+    def _check_link(self, link):
+        cur = self.conn.cursor()
+        cur.execute("select link from links where link = (?)", [link])
+        if len(cur.fetchall()) == 0:
+            return True
+        else:
+            return False
+
+    def _link_accessed(self, link):
+        cur = self.conn.cursor()
+        cur.execute("insert into links (link) values (?)", [link])
+        self.conn.commit()
+
+    def _insert_items(self, x):
+        cur = self.conn.cursor()
+        cur.executemany("insert or ignore into items (time, title, link, author, author_link) values "
+                "(:time, :title, :link, :author, :author_link)", x)
+        self.conn.commit()
+
+        item_num = cur.execute("select count(*) from items").fetchone()[0]
+        print "{} items in the database".format(item_num)
+
+
     def _scan_items(self, allthings, batch_size):
 
         print 'start scanning time info....'
-        unfetched_list = [x for x in allthings if x['link'] not in self.links]
+        unfetched_list = [x for x in allthings if self._check_link(x['link'])]
 
         len_list = len(unfetched_list)
         print "total {} new items".format(len_list)
@@ -142,7 +170,7 @@ class RentCrowl():
 
             # if open url failed
             if x['time'] is not False:
-                self.links.add(x['link'])
+                self._link_accessed(x['link'])
                 # if no time information
                 if x['time'] is not None:
                     small_batch.append(x)
@@ -155,18 +183,12 @@ class RentCrowl():
                 print end_time
                 print "averaged_time: {}s".format(timediff/batch_size)
 
-                self._update_df(small_batch, write=True)
-                self._update_links()
+                self._insert_items(small_batch)
                 small_batch = []
 
-                if self.displayer is not None:
-                    self.displayer.display()
 
-        self._update_df(small_batch, write=True)
-        self._update_links()
+        self._insert_items(small_batch)
 
-        if self.displayer is not None:
-            self.displayer.display()
 
         print 'finish get time information ',
         print datetime.now()
@@ -182,7 +204,6 @@ class RentCrowl():
             try:
                 if self._last_open_time is not None:
                     timediff = (datetime.now() - self._last_open_time).total_seconds()
-                    # print "timediff = {}".format(timediff)
                     if self.delay_sec > timediff:
                         time.sleep(self.delay_sec - timediff)
 
@@ -209,37 +230,6 @@ class RentCrowl():
                             err_cnt = 0
                             break
 
-
-    def _update_df(self, new_items, write=True):
-        # filter_items = [x for x in new_items if x['time']]
-        if len(new_items) == 0:
-            return
-
-        df_new = pd.DataFrame(new_items)
-        df_new = df_new.set_index('time')
-        df_new = df_new[self.headers]
-        if self.df is None:
-            df_update = df_new
-        else: 
-            df_update = self.df.append(df_new)
-
-        len_1 = len(df_update)
-        df_update = df_update.drop_duplicates().sort_index(ascending=False)
-        len_2 = len(df_update)
-
-        print "drop {} duplicated items".format(len_1-len_2)
-
-        if write:
-            df_update.to_csv(self.df_file, sep = ',', quotechar='"', encoding='utf-8', date_format='%Y-%m-%d %H:%M:%S')
-
-        self.df = df_update
-        self.author = set(self.df['author_link'])
-
-        print "update the database, it has now {} items".format(len(df_update))
-
-    def _update_links(self):
-        with open(self.link_file, 'wb+') as f:
-            f.write('\n'.join(self.links))
 
     def _get_timestamp(self, href):
         """ 
@@ -281,9 +271,10 @@ class RentCrowl():
         except urllib2.URLError as err: 
             return False
 
+    
 if __name__ == "__main__":
 
-    data_file = 'rent.csv'
+    data_file = 'data.db'
     link_file = 'links'
 
     urlbase_list = ['https://www.douban.com/group/beijingzufang/discussion?start=',
@@ -295,7 +286,7 @@ if __name__ == "__main__":
                    'https://www.douban.com/group/opking/discussion?start=',
                    'https://www.douban.com/group/276176/discussion?start=']
 
-    n_page = 5
+    n_page = 2
     batch_size = 20
 
     rc = RentCrowl(data_file, link_file, delay_sec=4) 

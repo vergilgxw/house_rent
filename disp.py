@@ -7,92 +7,99 @@ from os.path import isfile
 import difflib
 import pdb
 import numpy as np
+import sqlite3
+
 
 
 class DataDisplayer():
     """ 
     select data and write it into md file
     """
-    def __init__(self, csv_file, md_file, n_dp_days):
+    def __init__(self, db_file, md_file, n_dp_days):
         """
         n_dp_days: search how many days
         """
-        self.csv_file  = csv_file
+        self.db_file   = db_file
         self.md_file   = md_file
         self.in_set    = set()
         self.out_set   = set()
         self.zjlist    = set()
         self.n_dp_days = n_dp_days
+        
+        print "connect database"
+        self._connect_db()
+        self._init_read_links()
+        self._init_show_links()
+
+
+
+    def _init_read_links(self):
+
+        self.conn.execute(
+            "create table if not exists read_links "
+            "(link text unique,"
+            "read boolean default false)")
+        self.conn.commit()
+
+    def _init_show_links(self):
+        self.conn.execute("create table if not exists show_links "
+                "(link text unique)")
+
 
     def display(self, clear=False, fold=True):
         """
         clear: clear "new" logo if True
         """
-
-        if not isfile(self.csv_file):
-            with open(self.md_file, 'wb') as f:
-                pass
-            return 
-
-        print "read file"
-        self._read_file()
-
-        if self.df.empty:
-            with open(self.md_file, 'wb') as f:
-                pass
-            return 
-        
         new_logo_str = '【new!】'
 
-        print "filter infomation"
-        self._filter_info(self.n_dp_days)
-
-        link_set = set()
         # search for existing link in md file
         if not isfile(self.md_file):
-            print "md file not exist, will create on"
+            print "md file not exist, will create one"
             with open(self.md_file, 'wb') as f:
                 pass
 
-        with open(self.md_file, 'rb') as f:   
-            pattern = re.compile(r'- \[.*?\]\((.*?)\)')
-            for line in f:  
-                if clear or new_logo_str not in line:
-                    result = re.search(pattern, line)
-                    link_set.add(result.group(1))
+        if clear:
+            self._save_show_links()
+    
+        print  "read information"
+        items = self.conn.execute("select items.*, "
+                "case when read_links.link is null then 0 else 1 end as read "
+                "from items left join read_links "
+                "on items.link = read_links.link "
+                "where datetime(time) > datetime('now', ?) "
+                "order by datetime(time) desc", ['-{} days'.format(int(self.n_dp_days))])
+
+        
+        print "filter information"
+        items = self._filter_info(items)
 
         print "folding repeat posts"
-        self._folding(link_set)
+        items = self._folding(items)
+
+        self._add_show_links(items)
 
         # write things to md file
         print "write to file"
         with open(self.md_file, 'wb') as f:
-            for index, x in self.display_df.iterrows():
-                if x['link'] in link_set:
-                    f.write(self._format_item_str(x, index))
+            for  x in items:
+                if x['read'] == 1:
+                    f.write(self._format_item_str(x))
                 else:
-                    f.write(self._format_item_str(x, index, new_logo_str))
+                    f.write(self._format_item_str(x, new_logo_str))
         print "success"
 
 
-    def _format_item_str(self, x, time_str, prefix=''):
+    def _format_item_str(self, x, prefix=''):
         return '- [{}{}]({})        作者：[{}]({})  重复: {}  {}\n'.format(prefix, 
                         x['title'].encode('utf-8'), x['link'], x['author'].encode('utf-8'), 
-                        x['author_link'],  x['fold_num'], time_str.strftime("%Y-%m-%d %H:%M:%S"))
+                        x['author_link'],  x['fold_num'], x['time'].strftime("%Y-%m-%d %H:%M:%S"))
 
     
-    def _read_file(self):
-        date_parser = lambda s: pd.datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
 
-        self.df = pd.read_csv(self.csv_file, sep=',', header=0, index_col=0, 
-                 parse_dates=['time'], date_parser=date_parser, quotechar='"', encoding='utf-8')
+    def _connect_db(self):
+        self.conn = sqlite3.connect(self.db_file, detect_types=sqlite3.PARSE_DECLTYPES) 
+        self.conn.row_factory = sqlite3.Row
 
-        if not self.df.empty:
-            self.links = set(self.df['link'])
-            self.author = set(self.df['author_link'])
-        else:
-            self.links = set()
-            self.author = set()
 
     def set_in_set(self, in_set):
         self.in_set = in_set
@@ -107,7 +114,7 @@ class DataDisplayer():
         else:
             self.ban_authors = set()
 
-    def _filter_info(self, day_offset):
+    def _filter_info(self, items):
         """
         filter information
         """
@@ -123,49 +130,65 @@ class DataDisplayer():
                     return False
             return result
 
-        if not self.df.empty:
-            df_sel = self.df[self.df.index >= (self.df.index[0] - pd.DateOffset(day_offset))]
+        items = [x for x in items if sel(x['title'], self.in_set, self.out_set) 
+                and x['author_link'] not in self.ban_authors]
 
-        selector = [sel(x['title'], self.in_set, self.out_set) for i, x in df_sel.iterrows()]
-        df_sel = df_sel.iloc[selector].sort_index(ascending = False)
-        df_sel = df_sel[[x['author_link'] not in self.ban_authors for i, x in df_sel.iterrows()]] 
+        return items
 
-        
-        self.display_df = df_sel
-
-    def _folding(self, link_set):
+    def _folding(self, items):
         """
         folding the overlapped titles
         """
 
-        fold_list = np.array(len(self.display_df) * [False])
-        fold_num = np.array(len(self.display_df) * [1], dtype=int)
+        fold_list = len(items) * [False]
+        fold_num = len(items) * [1]
 
-        for i, (index, x) in enumerate(self.display_df.iterrows()):
+        ret = []
+        for i, x in enumerate(items):
             if  fold_list[i]:
                 continue
 
-            for j, (idx2, y) in enumerate(self.display_df.iloc[i+1:].iterrows()):
+            t = {key: x[key] for key in x.keys()}
+            t['fold_num'] = 1
+            ret.append(t)
+
+            for j, y in enumerate(items[i+1:]):
                 if x['author_link'] != y['author_link']:
                     continue
                 
                 s = difflib.SequenceMatcher(None, x['title'], y['title'])  
                 _, _, overlapped_len = s.find_longest_match(0, len(x['title']), 0, len(y['title'])) 
                 if overlapped_len/float(len(x['title'])) > 0.5:
-                    fold_num[i] += 1
+                    t['fold_num'] += 1
                     fold_list[i+j+1] = True
-                    if y['link'] in link_set:
-                        link_set.add(x['link'])
+                    if y['read'] == 1:
+                        self.conn.execute("insert or ignore into read_links (link) "
+                                "values (?)", x['link'])
+                        t['read'] == 1
 
-        self.display_df['fold_num'] = fold_num
-        self.display_df = self.display_df[~fold_list]
+        return ret 
+
+    def _save_show_links(self):
+        self.conn.execute("insert or ignore into read_links (link) "
+                "select link from show_links")
+
+        self.conn.execute("drop table show_links")
+        self.conn.execute("create table show_links "
+                "(link text unique)")
+        self.conn.commit()
+    
+    def _add_show_links(self, items):
+        links = [(x['link'],) for x in items]
+        self.conn.executemany("insert or ignore into show_links (link) "
+                "values (?)", links)
+        self.conn.commit()
 
 
 
 if __name__ == '__main__':
 
-    data_file    = 'rent.csv'
-    link_file    = 'links'
+    data_file    = 'data.db'
+    # link_file    = 'links'
     zjlist_file  = 'zhongjie_list'
     md_file      = './data.md'
     display_days = 5
@@ -181,7 +204,7 @@ if __name__ == '__main__':
     dp.set_zjlist(zjlist_file)
 
     # while True:
-    dp.display(clear=False)
+    dp.display(clear=True)
         # time.sleep(5)
 
 
