@@ -4,4 +4,4 @@ links
 *~
 *.sw[op]
 *.pyc
-*.db
+*.db*
