@@ -21,11 +21,13 @@ def create_items_table(conn):
     print "item table not exist, will create one"
     conn.execute(
         "create table items("
-        "time timestamp,"
-        "title text,"
-        "link text unique,"
-        "author text,"
-        "author_link text)")
+        "id integer primary key autoincrement, "
+        "time timestamp, "
+        "title text, "
+        "link text unique, "
+        "author text, "
+        "author_link text, "
+        "status text)")
     conn.execute("create index idx on items (time)")
     conn.commit()
 
@@ -57,8 +59,6 @@ class RentCrowl():
                 "links": create_links_table}
 
         self._read_db()
-        # self._read_df()
-        # self._read_link()
         self._last_open_time = None
 
     def crawl_items(self, urlbase_list, n_page=10, batch_size=40):
@@ -151,6 +151,7 @@ class RentCrowl():
 
         print 'start scanning time info....'
         unfetched_list = [x for x in allthings if self._check_link(x['link'])]
+        print '{}/{}'.format(len(unfetched_list), len(allthings))
 
         len_list = len(unfetched_list)
         print "total {} new items".format(len_list)
