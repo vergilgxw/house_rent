@@ -19,13 +19,21 @@
         <input type="submit" value="提交">
 </form>
 
+
+<script language="JavaScript">
+function toggle(source) {
+    checkboxes = document.getElementsByName('select');
+    for (var i = 0, n = checkboxes.length; i < n; i++)
+        checkboxes[i].checked = source.checked;
+}
+</script>
 <form action="{{ url_for('set_type') }}" method='post'>
   {% block form %}
   {% endblock %}
 
   <table class="entries">
       <tr> 
-          <td>  </td> 
+          <td> <input type="checkbox" onClick="toggle(this)" />   </td> 
           <td> 标题 </td> 
           <td> 作者</td> 
           <td> 发表时间 </td> 
