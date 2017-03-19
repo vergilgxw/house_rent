@@ -27,7 +27,7 @@ def create_items_table(conn):
         "link text unique, "
         "author text, "
         "author_link text, "
-        "status text)")
+        "status text default 'unread')")
     conn.execute("create index idx on items (time)")
     conn.commit()
 
