@@ -1,0 +1,55 @@
+{% extends "layout.html" %}
+{% block body %}
+
+{% block title %}
+{% endblock %}<br>
+
+<form action=" {{ url_for('submit_filter') }} " method='post'> 
+    <div class="input_promt"> 
+    关键字:
+    </div>
+    <textarea name="in_words" class="input">{{ filter_info.in_words }}</textarea>
+        <br>
+    <div class="input_promt"> 
+    屏蔽关键字:
+    </div>
+    <textarea name="out_words" class="input"> {{ filter_info.out_words }}</textarea>
+        <br>
+        显示天数: <input type="text" value="{{ filter_info.days }}" name="days"><br>
+        <input type="submit" value="提交">
+</form>
+
+<form action="{{ url_for('set_type') }}" method='post'>
+  {% block form %}
+  {% endblock %}
+
+  <table class="entries">
+      <tr> 
+          <td>  </td> 
+          <td> 标题 </td> 
+          <td> 作者</td> 
+          <td> 发表时间 </td> 
+          <td> 重复 </td> 
+      </tr>
+  {% for entry in entries %}
+  <tr>
+      <td class="check">
+          <input type=checkbox name="select" value="{{ entry.id }}" >
+      </td>
+      <td class="title">
+          <a href={{ entry.link }} target="_blank"> {{ entry.title }}  </a>  
+      </td>
+      <td class="author">
+          <a href={{ entry.author_link }}>  {{ entry.author }} </a>
+      </td>
+      <td class="time">
+           {{ entry.time}}
+      </td>
+      <td class="repeat">
+           {{ entry.fold_num}}
+      </td>
+  </tr>
+  {% endfor %}
+  </table>
+</form>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "show_entries.html" %}
+
+{% block title %}
+ <a href= "{{ url_for('show_unread') }}"> 未读</a>
+    已读 
+ <a href= "{{ url_for('show_collection') }}"> 收藏 </a>
+ <a href= "{{ url_for('show_agent') }}"> 中介帖 </a>
+{% endblock %}
+
+{% block form%}
+    <input type="submit" name="submit" value="未读">
+    <input type="submit" name="submit" value="收藏">
+    <input type="submit" name="submit" value="中介">
+{% endblock %}
+
