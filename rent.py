@@ -136,8 +136,8 @@ class RentCrowl():
         cur = self.conn.cursor()
         try:
             cur.execute("insert  or ignore into links (link) values (?)", [link])
-        except:
-            pdb.set_trace()
+        except e:
+            print e
         self.conn.commit()
 
     def _insert_items(self, x):
