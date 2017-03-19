@@ -134,7 +134,10 @@ class RentCrowl():
 
     def _link_accessed(self, link):
         cur = self.conn.cursor()
-        cur.execute("insert into links (link) values (?)", [link])
+        try:
+            cur.execute("insert  or ignore into links (link) values (?)", [link])
+        except:
+            pdb.set_trace()
         self.conn.commit()
 
     def _insert_items(self, x):
@@ -287,8 +290,8 @@ if __name__ == "__main__":
                    'https://www.douban.com/group/opking/discussion?start=',
                    'https://www.douban.com/group/276176/discussion?start=']
 
-    n_page = 2
-    batch_size = 20
+    n_page = 5
+    batch_size = 10
 
     rc = RentCrowl(data_file, link_file, delay_sec=4) 
     while(1):

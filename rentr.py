@@ -18,6 +18,7 @@ from flask import Flask, request, session, g, redirect, url_for, abort, \
 import difflib
 import numpy as np
 
+
 # create our little application :)
 app = Flask(__name__)
 
@@ -68,13 +69,17 @@ def init_db():
 
 
 
-def folding(items, db):
+def title_repeat(x, y):
+    s = difflib.SequenceMatcher(None, x['title'], y['title'])  
+    _, _, overlapped_len = s.find_longest_match(0, len(x['title']), 0, len(y['title'])) 
+    return overlapped_len/float(len(x['title'])) > 0.5
+
+def folding(items):
     """
     folding the overlapped titles
     """
 
     fold_list = len(items) * [False]
-    fold_num = len(items) * [1]
 
     ret = []
     for i, x in enumerate(items):
@@ -83,23 +88,17 @@ def folding(items, db):
 
         t = {key: x[key] for key in x.keys()}
         t['fold_num'] = 1
+        t['fold_ids'] = []
         ret.append(t)
 
         for j, y in enumerate(items[i+1:]):
             if x['author_link'] != y['author_link']:
                 continue
-            
-            s = difflib.SequenceMatcher(None, x['title'], y['title'])  
-            _, _, overlapped_len = s.find_longest_match(0, len(x['title']), 0, len(y['title'])) 
-            if overlapped_len/float(len(x['title'])) > 0.5:
+            if title_repeat(x, y): 
                 t['fold_num'] += 1
+                t['fold_ids'].append(y['id'])
                 fold_list[i+j+1] = True
-                if y['read'] == 1:
-                    db.execute("insert or ignore into read_links (link) "
-                            "values (?)", [x['link']])
-                    t['read'] == 1
 
-    db.commit()
 
     return ret 
 
@@ -146,21 +145,20 @@ def display(db, info, status):
                     "on items.author_link == agent_authors.author_link ")
         agent_str2 =  "agent_authors.author_link is null and "
 
-    query = ("select items.*, "
-            "case when read_links.link is null then 0 else 1 end as read "
-            "from "
-            "items left join read_links "
-            "on items.link = read_links.link ") + agent_str1 + "where " + agent_str2 + ("datetime(time) > datetime('now', ?) "
+    query = ("select * "
+            "from items ") + agent_str1 + "where " + agent_str2 + ("datetime(time) > datetime('now', ?) "
             "and status = ? "
             "order by datetime(time) desc")
+
+    global items
 
     items = db.execute(query, ['-{} days'.format(int(info['days'])), status]).fetchall()
 
     items = filter_info(items, info)
-    items = folding(items, db)
-
+    items = folding(items)
 
     return items
+
 
 
 
@@ -210,37 +208,37 @@ def close_db(error):
 
 
 
-def get_items(status):
+def get_disp_info(status):
     db = get_db()
 
     info = get_filter_info(db)
     if info['days'] is None:
         info['days'] = 5
 
-    items = display(db, info, status)
+    g.items = display(db, info, status)
 
     info['in_words'] =  ' '.join(info['in_words'])
     info['out_words'] = ' '.join(info['out_words'])
-    return {'entries': items, 'filter_info': info}
+    return {'entries': g.items, 'filter_info': info}
 
 
 
 @app.route('/')
 def show_unread():
-    return render_template('show_unread.html', **get_items('unread'))
+    return render_template('show_unread.html', **get_disp_info('unread'))
 
 
 @app.route('/read')
 def show_read():
-    return render_template('show_read.html', **get_items('read'))
+    return render_template('show_read.html', **get_disp_info('read'))
 
 @app.route('/agent')
 def show_agent():
-    return render_template('show_agent.html', **get_items('agent'))
+    return render_template('show_agent.html', **get_disp_info('agent'))
 
 @app.route('/collection')
 def show_collection():
-    return render_template('show_collection.html', **get_items('collection'))
+    return render_template('show_collection.html', **get_disp_info('collection'))
 
 
 @app.route('/submit_filter', methods=['POST'])
@@ -255,10 +253,31 @@ def submit_filter():
 
     return redirect(request.referrer)
 
+def augment_id(ids):
+    
+    db = get_db()
+    ids = [int(x) for x in ids]
+    authors = []
+    anchor_items = []
+    ret_ids = []
+    for x in ids:
+        anchor_item = db.execute("select title, author_link from items where id = ?", [x]).fetchone()
+        author_link = anchor_item['author_link'] 
+        items = db.execute("select id, title, author_link "
+        "from items where author_link = ?", (author_link,)).fetchall()
+        for y in items:
+            if title_repeat(anchor_item, y):
+                ret_ids.append(y['id'])
+    
+    return ret_ids
+    
+
+
 @app.route('/set_type', methods=['POST'])
 def set_type():
     status_dict = {u'未读': 'unread', u'已读': 'read', u'收藏': 'collection', u'中介': 'agent'}
     ids = request.form.getlist('select') 
+    ids = augment_id(ids)
     status = status_dict[request.form['submit']]
     db = get_db()
     set_status(db, status, ids)
