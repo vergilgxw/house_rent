@@ -6,12 +6,13 @@ h2              { font-size: 1.2em; }
 
 
 .page           { margin: 2em auto; width: 60em; border: 5px solid #ccc;
-                  padding: 0.8em; background: white; }
+                  /*padding: 0.8em; background: white; }*/
+                  padding: 0.8em; background: #fffbf4; }
 .entries        { list-style: none; margin: 0; padding: 0; }
 .entries  td    { font-size: 0.9em; padding: 8px 0;
                  border-bottom: 1px dashed;}
 .title          { width: 35em;}
-.title a:visited   { color: #92d7e8}
+.title a:visited   { color: #666699}
 .author         { width: 10em; }
 .time           { width: 15em; }
 .repeat         { width: 5em; text-align: right;}
