@@ -11,6 +11,7 @@ h2              { font-size: 1.2em; }
 .entries  td    { font-size: 0.9em; padding: 8px 0;
                  border-bottom: 1px dashed;}
 .title          { width: 35em;}
+.title a:visited   { color: #92d7e8}
 .author         { width: 10em; }
 .time           { width: 15em; }
 .repeat         { width: 5em; text-align: right;}
