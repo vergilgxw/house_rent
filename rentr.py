@@ -275,7 +275,7 @@ def augment_id(ids):
 
 @app.route('/set_type', methods=['POST'])
 def set_type():
-    status_dict = {u'未读': 'unread', u'已读': 'read', u'收藏': 'collection', u'中介': 'agent'}
+    status_dict = {u'+未读': 'unread', u'+已读': 'read', u'+收藏': 'collection', u'+中介': 'agent'}
     ids = request.form.getlist('select') 
     ids = augment_id(ids)
     status = status_dict[request.form['submit']]
