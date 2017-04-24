@@ -136,8 +136,8 @@ class RentCrowl():
         cur = self.conn.cursor()
         try:
             cur.execute("insert  or ignore into links (link) values (?)", [link])
-        except e:
-            print e
+        except:
+            pass
         self.conn.commit()
 
     def _insert_items(self, x):
@@ -281,14 +281,17 @@ if __name__ == "__main__":
     data_file = 'data.db'
     link_file = 'links'
 
-    urlbase_list = ['https://www.douban.com/group/beijingzufang/discussion?start=',
-               'https://www.douban.com/group/26926/discussion?start=',
-               'https://www.douban.com/group/zhufang/discussion?start=',
-               'https://www.douban.com/group/257523/discussion?start=', 
-                   'https://www.douban.com/group/279962/discussion?start=', 
-                   'https://www.douban.com/group/sweethome/discussion?start=',
-                   'https://www.douban.com/group/opking/discussion?start=',
-                   'https://www.douban.com/group/276176/discussion?start=']
+    urlbase_list = [
+            'https://www.douban.com/group/252218/discussion?start=',
+            'https://www.douban.com/group/257523/discussion?start=', 
+            'https://www.douban.com/group/26926/discussion?start=',
+            'https://www.douban.com/group/276176/discussion?start=',
+            'https://www.douban.com/group/279962/discussion?start=', 
+            'https://www.douban.com/group/sweethome/discussion?start=',
+            'https://www.douban.com/group/beijingzufang/discussion?start=',
+            'https://www.douban.com/group/opking/discussion?start=',
+            'https://www.douban.com/group/xiaotanzi/discussion?start=',
+            'https://www.douban.com/group/zhufang/discussion?start=']
 
     n_page = 5
     batch_size = 10
