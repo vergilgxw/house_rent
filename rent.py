@@ -17,6 +17,8 @@ import sqlite3
 def date_parser(s):
     return pd.datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
 
+    
+
 def create_items_table(conn):
     print "item table not exist, will create one"
     conn.execute(
@@ -27,7 +29,8 @@ def create_items_table(conn):
         "link text unique, "
         "author text, "
         "author_link text, "
-        "status text default 'unread')")
+        "status text default 'unread', "
+        "city text)")
     conn.execute("create index idx on items (time)")
     conn.commit()
 
@@ -47,12 +50,13 @@ class RentCrowl():
         delay_sec: seconds to delay between two html access
         """
 
+        self.valide_days = 20
         self.items_page = 25
         # self.df_file = df_file 
         self.db_file = db_file
         self.link_file = link_file
 
-        self.headers = ['title', 'link', 'author', 'author_link']
+        # self.headers = ['title', 'link', 'author', 'author_link']
         self.delay_sec = delay_sec;
 
         self.db_constructor = {"items": create_items_table, 
@@ -67,8 +71,11 @@ class RentCrowl():
         n_page: page number for each douban group
         batch_size: scanning post number between two updating 
         """
-        allthings = self._scan_list(urlbase_list, n_page)
-        self._scan_items(allthings, batch_size)
+        for k, v in urlbase_list.items():
+            self.city = k
+            print "scan for {}..".format(k)
+            allthings = self._scan_list(v, n_page)
+            self._scan_items(allthings, batch_size)
 
     def _read_db(self):
         """
@@ -97,6 +104,7 @@ class RentCrowl():
         
         start_time = datetime.now()
         for urlbase in urlbase_list:
+            print "scan urlbase {}..".format(urlbase)
             for i in xrange(n_page):
                 plain_text = self._open_url(urlbase+str(i*self.items_page), "in reading item list: ")
                 cnt += 1
@@ -116,8 +124,14 @@ class RentCrowl():
 
                 if plain_text is not None:
                     soup = BeautifulSoup(plain_text, 'lxml')
-                    list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')[2:]      
-                    allthings += [self._extract_info(x) for x in list_table]
+                    try:
+                        list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')[2:]      
+                    except:
+                        break
+                    for x in list_table:
+                        infos = self._extract_info(x)
+                        if (datetime.now()-infos['re_time']).days < self.valide_days:
+                            allthings.append(infos)
         
         print '' 
         print 'finish, scanning {} pages '.format(n_total_pages),
@@ -142,8 +156,8 @@ class RentCrowl():
 
     def _insert_items(self, x):
         cur = self.conn.cursor()
-        cur.executemany("insert or ignore into items (time, title, link, author, author_link) values "
-                "(:time, :title, :link, :author, :author_link)", x)
+        cur.executemany("insert or ignore into items (time, title, link, author, author_link, city) values "
+                "(:time, :title, :link, :author, :author_link, :city)", x)
         self.conn.commit()
 
         item_num = cur.execute("select count(*) from items").fetchone()[0]
@@ -176,7 +190,8 @@ class RentCrowl():
             if x['time'] is not False:
                 self._link_accessed(x['link'])
                 # if no time information
-                if x['time'] is not None:
+                if x['time'] is not None and (datetime.now()-x['time']).days < self.valide_days: 
+                    x['city'] = self.city;
                     small_batch.append(x)
 
             if cnt % batch_size == 0:
@@ -191,7 +206,8 @@ class RentCrowl():
                 small_batch = []
 
 
-        self._insert_items(small_batch)
+        if len(small_batch) != 0:
+            self._insert_items(small_batch)
 
 
         print 'finish get time information ',
@@ -264,6 +280,13 @@ class RentCrowl():
         author_info = x.find_all(name='td', nowrap='nowrap')[0]
         info['author_link'] = author_info.a['href']        
         info['author'] = author_info.getText()
+        time_text = x.find(name='td', class_='time').getText()
+        try:
+            info['re_time'] = datetime.strptime(time_text, '%m-%d %H:%M')
+            info['re_time'] = info['re_time'].replace(year=datetime.now().year)
+        except:
+            info['re_time'] = datetime.strptime(time_text, '%Y-%m-%d')
+
 
         return info
 
@@ -281,8 +304,7 @@ if __name__ == "__main__":
     data_file = 'data.db'
     link_file = 'links'
 
-    urlbase_list = [
-            'https://www.douban.com/group/252218/discussion?start=',
+    beijing_list = ['https://www.douban.com/group/252218/discussion?start=',
             'https://www.douban.com/group/257523/discussion?start=', 
             'https://www.douban.com/group/26926/discussion?start=',
             'https://www.douban.com/group/276176/discussion?start=',
@@ -291,9 +313,28 @@ if __name__ == "__main__":
             'https://www.douban.com/group/beijingzufang/discussion?start=',
             'https://www.douban.com/group/opking/discussion?start=',
             'https://www.douban.com/group/xiaotanzi/discussion?start=',
-            'https://www.douban.com/group/zhufang/discussion?start=']
+            'https://www.douban.com/group/zhufang/discussion?start='] 
 
-    n_page = 5
+    shenzhen_list = ['https://www.douban.com/group/106955/discussion?start=', 
+            'https://www.douban.com/group/nanshanzufang/discussion?start=',
+            'https://www.douban.com/group/szsh/discussion?start=',
+            'https://www.douban.com/group/futianzufang/discussion?start=',
+            'https://www.douban.com/group/551176/discussion?start=',
+            'https://www.douban.com/group/luohuzufang/discussion?start=',
+            'https://www.douban.com/group/longhuazufang/discussion?start=',
+            'https://www.douban.com/group/498004/discussion?start=',
+            'https://www.douban.com/group/longgangzufang/discussion?start=', 
+            'https://www.douban.com/group/SZhouse/discussion?start=',
+            'https://www.douban.com/group/559626/discussion?start=', 
+            'https://www.douban.com/group/528184/discussion?start=', 
+            'https://www.douban.com/group/592828/discussion?start=',
+            'https://www.douban.com/group/huanzhongxian/discussion?start=', 
+            'https://www.douban.com/group/591624/discussion?start=', 
+            'https://www.douban.com/group/luobao1haoxian/discussion?start=']
+
+    urlbase_list = {'beijing': beijing_list, 'shenzhen': shenzhen_list}
+
+    n_page = 10
     batch_size = 10
 
     rc = RentCrowl(data_file, link_file, delay_sec=4) 

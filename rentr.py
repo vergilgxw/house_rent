@@ -51,15 +51,10 @@ def get_db():
 
 def init_db():
     db = get_db()
+
     db.execute(
-        "create table if not exists in_words"
-        "(word text unique)")
-    db.execute(
-        "create table if not exists out_words"
-        "(word text unique)")
-    db.execute(
-        "create table if not exists display_days"
-        "(day int)")
+        "create table if not exists params"
+        "(name text unique, value text)")
 
     db.execute(
         "create table if not exists agent_authors"
@@ -74,7 +69,7 @@ def title_repeat(x, y):
     _, _, overlapped_len = s.find_longest_match(0, len(x['title']), 0, len(y['title'])) 
     return overlapped_len/float(len(x['title'])) > 0.5
 
-def folding(items):
+def folding(items, info):
     """
     folding the overlapped titles
     """
@@ -100,7 +95,14 @@ def folding(items):
                 fold_list[i+j+1] = True
 
 
-    return ret 
+    nitems = int(info['nitems'])
+    if nitems != -1:
+        n_items = min(len(ret), int(info['nitems']))
+    else:
+        n_items = len(ret)
+
+
+    return ret[0:n_items]
 
 def filter_info(items, info):
     """
@@ -121,10 +123,12 @@ def filter_info(items, info):
                 return False
         return result
 
-    items = [x for x in items if sel(x['title'], info['in_words'], info['out_words'])]
-            # and x['author_link'] not in self.ban_authors]
+    in_words = [x.strip() for x in info['in_words'].split()]
+    out_words = [x.strip() for x in info['out_words'].split()]
+    items = [x for x in items if sel(x['title'], in_words, out_words)]
 
     return items
+
 
 def set_ban_author(db):
     db.execute("delete from agent_authors")
@@ -137,7 +141,7 @@ def set_ban_author(db):
 def display(db, info, status):
 
 
-    set_ban_author(db)
+    # set_ban_author(db)
     if status == 'agent':
         agent_str1 = agent_str2 = ""
     else:
@@ -145,17 +149,22 @@ def display(db, info, status):
                     "on items.author_link == agent_authors.author_link ")
         agent_str2 =  "agent_authors.author_link is null and "
 
+    if info['city'] == 'all':
+        city_str = ""
+    else:
+        city_str = "and city='{}' ".format(info['city'])
+
+
     query = ("select * "
             "from items ") + agent_str1 + "where " + agent_str2 + ("datetime(time) > datetime('now', ?) "
-            "and status = ? "
-            "order by datetime(time) desc")
+            "and status = ? ") + city_str + "order by datetime(time) desc"
 
     global items
 
-    items = db.execute(query, ['-{} days'.format(int(info['days'])), status]).fetchall()
+    items = db.execute(query, ['-{} days'.format(int(info['display_days'])), status]).fetchall()
 
     items = filter_info(items, info)
-    items = folding(items)
+    items = folding(items, info)
 
     return items
 
@@ -166,27 +175,48 @@ def get_filter_info(db):
     
     db.commit()
 
-    cur = db.execute("select * from in_words")
-    in_words = [x[0] for x in cur.fetchall()]
+    cur = db.execute("select value from params where name='in_words'")
+    in_words = cur.fetchone()
+    if in_words is not None:
+        in_words = in_words[0]
+    else:
+        in_words = ''
 
-    cur = db.execute("select * from out_words")
-    out_words = [x[0] for x in cur.fetchall()]
+    cur = db.execute("select value from params where name='out_words'")
+    out_words = cur.fetchone()
+    if out_words is not None:
+        out_words = out_words[0]
+    else:
+        out_words = ''
 
-    cur = db.execute("select * from display_days")
+    cur = db.execute("select value from params where name='display_days'")
     days = cur.fetchone()
-    if days is not None:
-        days = days[0]
+    if days is None:
+        days = 5
+    else:
+        days = int(days[0])
 
-    return {"in_words":in_words, "out_words":out_words, "days": days}
+    cur = db.execute("select value from params where name='city'")
+    city = cur.fetchone()
+    if city is None:
+        city = 'all'
+    else:
+        city = city[0]
+
+
+    cur = db.execute("select value from params where name='nitems'")
+    nitems = cur.fetchone()
+    if nitems is None:
+        nitems = -1
+    else:
+        nitems = int(nitems[0])
+
+    return {"in_words":in_words, "out_words":out_words, "display_days": days, "nitems": nitems, 'city': city}
 
 def set_filter_info(db, info):
 
-    db.execute("delete from in_words")
-    db.execute("delete from out_words")
-    db.execute("delete from display_days")
-    db.executemany("insert or ignore into in_words values (?)", [(x,) for x in info['in_words']])
-    db.executemany("insert or ignore into out_words values (?)", [(x,) for x in info['out_words']])
-    db.execute("insert into display_days values (?)", (info['days'],))
+    insert_info = [(k, v) for k, v in info.iteritems()] 
+    db.executemany("insert or replace into params (name,  value) values (?, ?)", insert_info)
     db.commit()
 
 def set_status(db, status, ids):
@@ -212,13 +242,12 @@ def get_disp_info(status):
     db = get_db()
 
     info = get_filter_info(db)
-    if info['days'] is None:
-        info['days'] = 5
 
     g.items = display(db, info, status)
 
-    info['in_words'] =  ' '.join(info['in_words'])
-    info['out_words'] = ' '.join(info['out_words'])
+    city_map = {'all': u'所有', 'beijing': u'北京', 'shenzhen': u'深圳'}
+    info['city'] = city_map[info['city']]
+
     return {'entries': g.items, 'filter_info': info}
 
 
@@ -245,9 +274,12 @@ def show_collection():
 def submit_filter():
     db = get_db()
     info = {}
-    info['in_words']  = [x.strip() for x in request.form['in_words'].split()]
-    info['out_words'] = [x.strip() for x in request.form['out_words'].split()]
-    info['days']      = request.form['days']
+    info['in_words']  = ' '.join([x.strip() for x in request.form['in_words'].split()])
+    info['out_words'] = ' '.join([x.strip() for x in request.form['out_words'].split()])
+    info['display_days']      = request.form['days']
+    info['nitems']      = request.form['nitems']
+    if request.form['city'] != 'default':
+        info['city']      = request.form['city']
     
     set_filter_info(db, info)
 
@@ -281,6 +313,7 @@ def set_type():
     status = status_dict[request.form['submit']]
     db = get_db()
     set_status(db, status, ids)
+    set_ban_author(db)
     return redirect(request.referrer)
         
 

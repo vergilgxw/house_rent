@@ -5,3 +5,4 @@ links
 *.sw[op]
 *.pyc
 *.db*
+config
