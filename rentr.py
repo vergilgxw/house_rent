@@ -17,6 +17,7 @@ from flask import Flask, request, session, g, redirect, url_for, abort, \
 
 import difflib
 import numpy as np
+from collections import defaultdict
 
 
 # create our little application :)
@@ -76,20 +77,22 @@ def folding(items, info):
 
     fold_list = len(items) * [False]
 
+    id_set = defaultdict(list)
     ret = []
     for i, x in enumerate(items):
         if  fold_list[i]:
             continue
-
+         
         t = {key: x[key] for key in x.keys()}
         t['fold_num'] = 1
-        t['fold_ids'] = []
         ret.append(t)
+        tid = int(t['id'])
+        id_set[tid].append(tid)
 
         for j, y in enumerate(items[i+1:]):
             if title_repeat(x, y): 
                 t['fold_num'] += 1
-                t['fold_ids'].append(y['id'])
+                id_set[tid].append(int(y['id']))
                 fold_list[i+j+1] = True
 
 
@@ -100,7 +103,7 @@ def folding(items, info):
         n_items = len(ret)
 
 
-    return ret[0:n_items]
+    return ret[0:n_items], dict(id_set)
 
 def filter_info(items, info):
     """
@@ -128,6 +131,7 @@ def filter_info(items, info):
     return items
 
 
+
 def display(db, info, status):
 
 
@@ -145,9 +149,10 @@ def display(db, info, status):
     items = db.execute(query, ['-{} days'.format(int(info['display_days'])), status]).fetchall()
 
     items = filter_info(items, info)
-    items = folding(items, info)
+    items, id_set = folding(items, info)
+    session['last_id_set'] = id_set
 
-    return items
+    return items 
 
 
 
@@ -231,6 +236,7 @@ def get_disp_info(status):
     city_map = {'all': u'所有', 'beijing': u'北京', 'shenzhen': u'深圳'}
     info['city'] = city_map[info['city']]
 
+    # return id_set
     return {'entries': g.items, 'filter_info': info}
 
 def get_sp_info():
@@ -266,6 +272,8 @@ def get_sp_info():
 
 @app.route('/')
 def show_unread():
+    # return str(get_disp_info('unread'))
+    # return (str(session['last_id_set']))
     return render_template('show_unread.html', **get_disp_info('unread'))
 
 @app.route('/read')
@@ -318,11 +326,25 @@ def submit_filter():
 
     return redirect(request.referrer)
 
+def augment_id(ids):
+    ret_ids = []
+    id_set = session['last_id_set']
+    for x in ids:
+        if x not in id_set:
+            ret_ids.append(x)
+        else:
+            ret_ids.extend(id_set[x])
+
+    return ret_ids
+
+ 
     
 @app.route('/set_type', methods=['POST'])
 def set_type():
     status_dict = {u'+未读': 'unread', u'+已读': 'read', u'+收藏': 'collection'}
     ids = request.form.getlist('select') 
+    ids = augment_id(ids)
+    # return str(ids) + '\n' + str(session['last_id_set'])
     status = status_dict[request.form['submit']]
     db = get_db()
     set_status(db, status, ids)
