@@ -58,7 +58,6 @@ function toggle(source) {
       <tr class="w3-theme"> 
           <td> <input type="checkbox" onClick="toggle(this)" />   </td> 
           <td> 标题 </td> 
-          <td> 作者</td> 
           <td> 发表时间 </td> 
           <td> 重复 </td> 
       </tr>
@@ -69,9 +68,6 @@ function toggle(source) {
       </td>
       <td class="title">
           <a href={{ entry.link }} target="_blank"> {{ entry.title }}  </a>  
-      </td>
-      <td >
-          <a href={{ entry.author_link }} target="_blank">  {{ entry.author }} </a>
       </td>
       <td >
            {{ entry.time}}

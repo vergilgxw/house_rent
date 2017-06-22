@@ -57,8 +57,8 @@ def init_db():
         "(name text unique, value text)")
 
     db.execute(
-        "create table if not exists agent_authors"
-        "(author_link text)")
+        "create table if not exists sp_params("
+        "name text unique, value text)")
 
     db.commit()
 
@@ -87,8 +87,6 @@ def folding(items, info):
         ret.append(t)
 
         for j, y in enumerate(items[i+1:]):
-            if x['author_link'] != y['author_link']:
-                continue
             if title_repeat(x, y): 
                 t['fold_num'] += 1
                 t['fold_ids'].append(y['id'])
@@ -130,24 +128,8 @@ def filter_info(items, info):
     return items
 
 
-def set_ban_author(db):
-    db.execute("delete from agent_authors")
-    db.execute("insert or ignore into agent_authors (author_link) "
-            "select author_link from items where status='agent'")
-    db.commit()
-
-
-
 def display(db, info, status):
 
-
-    # set_ban_author(db)
-    if status == 'agent':
-        agent_str1 = agent_str2 = ""
-    else:
-        agent_str1 = ("left join agent_authors "
-                    "on items.author_link == agent_authors.author_link ")
-        agent_str2 =  "agent_authors.author_link is null and "
 
     if info['city'] == 'all':
         city_str = ""
@@ -155,8 +137,7 @@ def display(db, info, status):
         city_str = "and city='{}' ".format(info['city'])
 
 
-    query = ("select * "
-            "from items ") + agent_str1 + "where " + agent_str2 + ("datetime(time) > datetime('now', ?) "
+    query = ("select * from items where datetime(time) > datetime('now', ?) "
             "and status = ? ") + city_str + "order by datetime(time) desc"
 
     global items
@@ -224,6 +205,8 @@ def set_status(db, status, ids):
     db.executemany("update items set status=? where id = ?", params)
     db.commit()
 
+
+
 @app.cli.command('initdb')
 def init_db_command():
     init_db()
@@ -250,24 +233,74 @@ def get_disp_info(status):
 
     return {'entries': g.items, 'filter_info': info}
 
+def get_sp_info():
+
+    db = get_db()
+
+    cur = db.execute("select value from sp_params where name='status'")
+    status = cur.fetchone()
+    if status is None:
+        status = 0; 
+    else:
+        status = status[0]
+
+    cur = db.execute("select value from sp_params where name='keywords'")
+    kws_str = cur.fetchone()
+    if kws_str is None:
+        kws = ''; 
+    else:
+        kws = kws_str[0]
+
+    cur = db.execute("select value from sp_params where name='ndays'")
+    ndays = cur.fetchone()
+    if ndays is None:
+        ndays = 0; 
+    else:
+        ndays = max(int(ndays[0]), 0)
+
+    info = {'key_words': kws, 'ndays': str(ndays), 'status': str(status)}
+
+    return info
+
 
 
 @app.route('/')
 def show_unread():
     return render_template('show_unread.html', **get_disp_info('unread'))
 
-
 @app.route('/read')
 def show_read():
     return render_template('show_read.html', **get_disp_info('read'))
 
-@app.route('/agent')
-def show_agent():
-    return render_template('show_agent.html', **get_disp_info('agent'))
-
 @app.route('/collection')
 def show_collection():
     return render_template('show_collection.html', **get_disp_info('collection'))
+
+@app.route('/sp')
+def show_sp():
+    return render_template('show_sp.html', sp_info=get_sp_info())
+
+
+@app.route('/set_sp', methods=['POST'])
+def set_sp():
+    status_dict = {u'抓取': 1, u'循环抓取': 2, u'停止': 0}
+    status = status_dict[request.form['submit']]
+    keywords = ' '.join([x.strip() for x in request.form['sp_keywords'].split()])
+
+    ndays = request.form['sp_ndays']
+    try:
+        ndays = max(int(ndays), 0)
+    except:
+        ndays = 0
+
+
+    db = get_db()
+    db.execute("insert or replace into sp_params (name, value) values (?, ?)", ('status',status))
+    db.execute("insert or replace into sp_params (name, value) values (?, ?)", ('keywords',keywords))
+    db.execute("insert or replace into sp_params (name, value) values (?, ?)", ('ndays', ndays))
+    db.commit()
+    return redirect(request.referrer)
+
 
 
 @app.route('/submit_filter', methods=['POST'])
@@ -285,35 +318,14 @@ def submit_filter():
 
     return redirect(request.referrer)
 
-def augment_id(ids):
     
-    db = get_db()
-    ids = [int(x) for x in ids]
-    authors = []
-    anchor_items = []
-    ret_ids = []
-    for x in ids:
-        anchor_item = db.execute("select title, author_link from items where id = ?", [x]).fetchone()
-        author_link = anchor_item['author_link'] 
-        items = db.execute("select id, title, author_link "
-        "from items where author_link = ?", (author_link,)).fetchall()
-        for y in items:
-            if title_repeat(anchor_item, y):
-                ret_ids.append(y['id'])
-    
-    return ret_ids
-    
-
-
 @app.route('/set_type', methods=['POST'])
 def set_type():
-    status_dict = {u'+未读': 'unread', u'+已读': 'read', u'+收藏': 'collection', u'+中介': 'agent'}
+    status_dict = {u'+未读': 'unread', u'+已读': 'read', u'+收藏': 'collection'}
     ids = request.form.getlist('select') 
-    ids = augment_id(ids)
     status = status_dict[request.form['submit']]
     db = get_db()
     set_status(db, status, ids)
-    set_ban_author(db)
     return redirect(request.referrer)
         
 

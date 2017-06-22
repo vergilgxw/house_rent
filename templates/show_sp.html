@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+
+{% block body %}
+<div class="w3-bar w3-theme">
+<a class="w3-bar-item w3-button" href= "{{ url_for('show_unread') }}"> 未读 </a>
+<a class="w3-bar-item w3-button" href= "{{ url_for('show_read') }}"> 已读 </a>
+<a class="w3-bar-item w3-button" href= "{{ url_for('show_collection') }}"> 收藏 </a>
+<a class="w3-bar-item w3-button w3-theme-l4" href= "{{ url_for('show_sp') }}"> 爬虫设置 </a>
+</div>
+
+<form class="w3-container w3-theme-l4 w3-padding-8" action=" {{ url_for('set_sp') }} " method='post'> 
+    <div class="w3-row w3-padding-4">
+        <div class="w3-col">
+            <label class="w3-label w3-text-theme">抓取关键字</label>
+            <textarea name="sp_keywords" class="w3-input w3-border w3-theme-l5">{{ sp_info.key_words}}</textarea>
+        </div>
+    </div>
+    <div class="w3-row w3-padding-4">
+        <div class="w3-col">
+            <label class="w3-label w3-text-theme">抓取天数</label>
+            <input class="w3-input w3-border w3-theme-l5" type="text" value="{{ sp_info.ndays}}" name="sp_ndays">
+        </div>
+    </div>
+
+    <div class="w3-padding-4">
+        <input class="w3-button w3-theme" type="submit" name="submit" value="抓取">
+        <input class="w3-button w3-theme" type="submit" name="submit" value="循环抓取">
+        <input class="w3-button w3-theme" type="submit" name="submit" value="停止">
+    </div>
+
+</form>
+{% endblock %}

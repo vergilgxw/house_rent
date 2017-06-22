@@ -1,7 +1,8 @@
 # coding: utf-8
 
 import urllib2
-from datetime import datetime
+import requests
+from datetime import datetime, date
 from bs4 import BeautifulSoup
 import re
 import time
@@ -20,25 +21,21 @@ def date_parser(s):
     
 
 def create_items_table(conn):
-    print "item table not exist, will create one"
     conn.execute(
-        "create table items("
+        "create table if not exists items("
         "id integer primary key autoincrement, "
         "time timestamp, "
         "title text, "
         "link text unique, "
-        "author text, "
-        "author_link text, "
         "status text default 'unread', "
         "city text)")
-    conn.execute("create index idx on items (time)")
+    conn.execute("create index if not exists idx on items (time)")
     conn.commit()
 
-def create_links_table(conn):
-    print "link table not exist, will create one"
+def create_param_table(conn):
     conn.execute(
-        "create table links("
-        "link text unique)")
+        "create table if not exists sp_param("
+        "name text unique, value text)")
     conn.commit()
 
 
@@ -50,175 +47,163 @@ class RentCrowl():
         delay_sec: seconds to delay between two html access
         """
 
-        self.valide_days = 20
-        self.items_page = 25
-        # self.df_file = df_file 
         self.db_file = db_file
         self.link_file = link_file
 
-        # self.headers = ['title', 'link', 'author', 'author_link']
         self.delay_sec = delay_sec;
-
-        self.db_constructor = {"items": create_items_table, 
-                "links": create_links_table}
 
         self._read_db()
         self._last_open_time = None
 
-    def crawl_items(self, urlbase_list, n_page=10, batch_size=40):
+    def crawl_items(self, urlbase_list):
 
         """
         n_page: page number for each douban group
         batch_size: scanning post number between two updating 
         """
-        for k, v in urlbase_list.items():
-            self.city = k
-            print "scan for {}..".format(k)
-            allthings = self._scan_list(v, n_page)
-            self._scan_items(allthings, batch_size)
+
+        while (1):
+            self._get_sp_params()
+
+            if self.status == 0:
+                continue 
+
+            elif self.status == 1:
+                self.db.execute("insert or replace into sp_params (name, value) values ('status', '0')")
+                self.db.commit()
+
+            if self.keywords is None:
+                continue 
+
+            for k, v in urlbase_list.items():
+                self.city = k
+                print "scan for {}..".format(k)
+                self._scan_list(v)
+
+            time.sleep(5)
 
     def _read_db(self):
         """
         read data from sqlite db, if not exist create one
         """
         conn = sqlite3.connect(self.db_file)
-        cur = conn.execute("select name from sqlite_master where type='table'")
-        tables = [x[0] for x in cur.fetchall()]
-        for tbl in ["items", "links"]:
-            if tbl not in tables:
-                self.db_constructor[tbl](conn)
+        create_items_table(conn)
+        create_param_table(conn)
 
-        print "load data successfully"
+        print "connect to db successfully"
 
         conn.row_factory = sqlite3.Row
-        self.conn = conn
+        self.db = conn
+
+    def _get_sp_params(self):
+
+        cur = self.db.execute("select value from sp_params where name='status'")
+        status = cur.fetchone()
+        if status is None:
+            status = 0; 
+        else:
+            status = int(status[0])
 
 
-    def _scan_list(self, urlbase_list, n_page=10):
+        cur = self.db.execute("select value from sp_params where name='keywords'")
+        kws_str = cur.fetchone()
+        if kws_str is None:
+            kws = None; 
+        else:
+            kws = kws_str[0].split()
 
-        allthings = []
+        cur = self.db.execute("select value from sp_params where name='ndays'")
+        ndays = cur.fetchone()
+        if ndays is None:
+            ndays = 1; 
+        else:
+            ndays = max(int(ndays[0]), 0)
+
+
+        self.keywords = kws 
+        self.ndays = ndays 
+        self.status = status
+
+    def _scan_list(self, group_list):
+
+        keywords = self.keywords
+        ndays = self.ndays
+        status = self.status
+
+
+        url_base = "https://www.douban.com/group/search"
+
+        params = {'start': '0', 'cat': '1013', 'group': '279962', 'q': u'上地', 'sort': 'time'}
+
         cnt = 0
-        n_total_pages = len(urlbase_list) * n_page
-        print "scanning item list........"
-
-        
         start_time = datetime.now()
-        for urlbase in urlbase_list:
-            print "scan urlbase {}..".format(urlbase)
-            for i in xrange(n_page):
-                plain_text = self._open_url(urlbase+str(i*self.items_page), "in reading item list: ")
-                cnt += 1
-                if plain_text is not None: 
+
+        for group in group_list:
+            item_batch = []
+            print 'scan group {}'.format(group)
+            params['group'] = group
+            inner_cnt = 0
+            for kw in keywords:
+                params['q'] = kw
+                max_days = 0
+                i = -1
+                while (max_days <= ndays):
+                    i += 1
+                    params['start'] = str(50 * i)
+                    r = requests.get(url_base, params=params)
+                    r = self._open_url(url_base, params=params)
+                    soup = BeautifulSoup(r.text, 'lxml')
+                    list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')
+                    small_batch = [self._extract_info(x) for x in list_table]
+                    batch_times = [x['time'] for x in small_batch]
+                    max_days = (date.today() - min(batch_times).date()).days
+
+                    item_batch.extend(small_batch)
+                    cnt += 1
+                    inner_cnt += 1
+                    
                     print 'o',
-                else:
-                    print 'x',
+                    sys.stdout.flush()
+            print ''
+            self._insert_items(item_batch)
 
-                sys.stdout.flush()
-                if cnt % 10 == 0:
-                    print ""
-                    print "scan {}/{} pages ".format(cnt, n_total_pages),
-                    end_time = datetime.now()
-                    start_time, timediff = end_time, (end_time-start_time).total_seconds()
-                    print end_time
-                    print "averaged_time: {}s".format(timediff/10)
+            print "scan {} pages ".format(cnt),
+            end_time = datetime.now()
+            start_time, timediff = end_time, (end_time-start_time).total_seconds()
+            print end_time
+            print "averaged_time: {}s".format(timediff/inner_cnt)
 
-                if plain_text is not None:
-                    soup = BeautifulSoup(plain_text, 'lxml')
-                    try:
-                        list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')[2:]      
-                    except:
-                        break
-                    for x in list_table:
-                        infos = self._extract_info(x)
-                        if (datetime.now()-infos['re_time']).days < self.valide_days:
-                            allthings.append(infos)
-        
-        print '' 
-        print 'finish, scanning {} pages '.format(n_total_pages),
-        print datetime.now()
-        return allthings
+        return 
 
     def _check_link(self, link):
-        cur = self.conn.cursor()
-        cur.execute("select link from links where link = (?)", [link])
+        cur = self.db.execute("select link from links where link = (?)", [link])
         if len(cur.fetchall()) == 0:
             return True
         else:
             return False
 
     def _link_accessed(self, link):
-        cur = self.conn.cursor()
         try:
-            cur.execute("insert  or ignore into links (link) values (?)", [link])
+            cur = self.db.execute("insert  or ignore into links (link) values (?)", [link])
         except:
             pass
-        self.conn.commit()
+        self.db.commit()
 
     def _insert_items(self, x):
-        cur = self.conn.cursor()
-        cur.executemany("insert or ignore into items (time, title, link, author, author_link, city) values "
-                "(:time, :title, :link, :author, :author_link, :city)", x)
-        self.conn.commit()
+        self.db.executemany("insert or ignore into items (time, title, link, city) values "
+                "(:time, :title, :link, :city)", x)
+        self.db.commit()
 
-        item_num = cur.execute("select count(*) from items").fetchone()[0]
+        item_num = self.db.execute("select count(*) from items").fetchone()[0]
         print "{} items in the database".format(item_num)
 
 
-    def _scan_items(self, allthings, batch_size):
-
-        print 'start scanning time info....'
-        unfetched_list = [x for x in allthings if self._check_link(x['link'])]
-        print '{}/{}'.format(len(unfetched_list), len(allthings))
-
-        len_list = len(unfetched_list)
-        print "total {} new items".format(len_list)
-        cnt = 0
-        start_time = datetime.now()
-
-        small_batch = []
-        for x in unfetched_list:
-            x['time'] = self._get_timestamp(x['link'])
-            if x['time'] is not False and x['time'] is not None:
-                print 'o',
-            else:
-                print 'x',
-
-            sys.stdout.flush()
-            cnt += 1
-
-            # if open url failed
-            if x['time'] is not False:
-                self._link_accessed(x['link'])
-                # if no time information
-                if x['time'] is not None and (datetime.now()-x['time']).days < self.valide_days: 
-                    x['city'] = self.city;
-                    small_batch.append(x)
-
-            if cnt % batch_size == 0:
-                print ""
-                print "scan {}/{} result ".format(cnt, len_list),
-                end_time = datetime.now()
-                start_time, timediff = end_time, (end_time-start_time).total_seconds()
-                print end_time
-                print "averaged_time: {}s".format(timediff/batch_size)
-
-                self._insert_items(small_batch)
-                small_batch = []
-
-
-        if len(small_batch) != 0:
-            self._insert_items(small_batch)
-
-
-        print 'finish get time information ',
-        print datetime.now()
-
-    def _open_url(self, url, text=""):
+    def _open_url(self, url, params=None):
         """
         try 10 times 
         if fail, return none
         """
-        url_text = None
+
         err_cnt = 0
         while True:
             try:
@@ -228,12 +213,11 @@ class RentCrowl():
                         time.sleep(self.delay_sec - timediff)
 
                 self._last_open_time = datetime.now()
-                f = urllib2.urlopen(url, timeout=15)
-                url_text = str(f.read())
-                return url_text
-            except (urllib2.HTTPError, urllib2.URLError, socket.timeout, ssl.SSLError) as e:
-                print text
-                print "{}: try to open {}".format(err_cnt+1, url), e
+                r = requests.get(url, params, timeout=10)
+                r.raise_for_status()
+                return r
+            except (requests.exceptions.RequestException, socket.timeout, ssl.SSLError) as e:
+                print "{}: try to open {}".format(err_cnt+1, r.url), e
                 if err_cnt < 10:
                     err_cnt += 1
                     print "sleep for 5 second and try again"
@@ -251,42 +235,16 @@ class RentCrowl():
                             break
 
 
-    def _get_timestamp(self, href):
-        """ 
-        get time stamp
-        
-        return False if open url failed
-        return None if no timestamp information
-        """
-        
-        text = self._open_url(href, text="in getting timestamp: ")
-        if text is None:
-            return False 
-        
-        soup = BeautifulSoup(text, 'lxml')
-        time_info = soup.find(name='div', class_='topic-doc')
-        try:
-            ts = datetime.strptime(time_info.find(name='span', class_='color-green').string, '%Y-%m-%d %H:%M:%S')
-            return ts
-        except:
-            return None 
-
     def _extract_info(self, x):
         """ 将一个帖子标题等内容解析并存储 """
         info = dict()
-        title_info = x.find(name='td', class_='title')
+        title_info = x.find(name='td', class_='td-subject')
         info['title'] = title_info.a['title'].replace('\n', ' ').replace('\r', ' ')
         info['link'] = title_info.a['href']
-        author_info = x.find_all(name='td', nowrap='nowrap')[0]
-        info['author_link'] = author_info.a['href']        
-        info['author'] = author_info.getText()
-        time_text = x.find(name='td', class_='time').getText()
-        try:
-            info['re_time'] = datetime.strptime(time_text, '%m-%d %H:%M')
-            info['re_time'] = info['re_time'].replace(year=datetime.now().year)
-        except:
-            info['re_time'] = datetime.strptime(time_text, '%Y-%m-%d')
 
+        time_text = x.find(name='td', class_='td-time')['title']
+        info['time'] = datetime.strptime(time_text, '%Y-%m-%d %H:%M:%S')
+        info['city'] = self.city;
 
         return info
 
@@ -304,42 +262,14 @@ if __name__ == "__main__":
     data_file = 'data.db'
     link_file = 'links'
 
-    beijing_list = ['https://www.douban.com/group/252218/discussion?start=',
-            'https://www.douban.com/group/257523/discussion?start=', 
-            'https://www.douban.com/group/26926/discussion?start=',
-            'https://www.douban.com/group/276176/discussion?start=',
-            'https://www.douban.com/group/279962/discussion?start=', 
-            'https://www.douban.com/group/sweethome/discussion?start=',
-            'https://www.douban.com/group/beijingzufang/discussion?start=',
-            'https://www.douban.com/group/opking/discussion?start=',
-            'https://www.douban.com/group/xiaotanzi/discussion?start=',
-            'https://www.douban.com/group/zhufang/discussion?start='] 
+    beijing_list = ['279962', '35417', '252218', '257523', '26926', 
+            '276176', 'sweethome', 'opking', 'xiaotanzi', 'zhufang']
 
-    shenzhen_list = ['https://www.douban.com/group/106955/discussion?start=', 
-            'https://www.douban.com/group/nanshanzufang/discussion?start=',
-            'https://www.douban.com/group/szsh/discussion?start=',
-            'https://www.douban.com/group/futianzufang/discussion?start=',
-            'https://www.douban.com/group/551176/discussion?start=',
-            'https://www.douban.com/group/luohuzufang/discussion?start=',
-            'https://www.douban.com/group/longhuazufang/discussion?start=',
-            'https://www.douban.com/group/498004/discussion?start=',
-            'https://www.douban.com/group/longgangzufang/discussion?start=', 
-            'https://www.douban.com/group/SZhouse/discussion?start=',
-            'https://www.douban.com/group/559626/discussion?start=', 
-            'https://www.douban.com/group/528184/discussion?start=', 
-            'https://www.douban.com/group/592828/discussion?start=',
-            'https://www.douban.com/group/huanzhongxian/discussion?start=', 
-            'https://www.douban.com/group/591624/discussion?start=', 
-            'https://www.douban.com/group/luobao1haoxian/discussion?start=']
 
-    urlbase_list = {'beijing': beijing_list, 'shenzhen': shenzhen_list}
-
-    n_page = 10
-    batch_size = 10
+    urlbase_list = {'beijing': beijing_list}#, 'shenzhen': shenzhen_list}
 
     rc = RentCrowl(data_file, link_file, delay_sec=4) 
-    while(1):
-        rc.crawl_items(urlbase_list, n_page, batch_size)
+    rc.crawl_items(urlbase_list)
 
 
 
