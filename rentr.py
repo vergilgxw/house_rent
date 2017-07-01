@@ -75,6 +75,7 @@ def folding(items, info):
     folding the overlapped titles
     """
 
+    nitems = int(info['nitems'])
     fold_list = len(items) * [False]
 
     id_set = defaultdict(list)
@@ -95,15 +96,10 @@ def folding(items, info):
                 id_set[tid].append(int(y['id']))
                 fold_list[i+j+1] = True
 
+        if len(ret) == nitems:
+            break
 
-    nitems = int(info['nitems'])
-    if nitems != -1:
-        n_items = min(len(ret), int(info['nitems']))
-    else:
-        n_items = len(ret)
-
-
-    return ret[0:n_items], dict(id_set)
+    return ret, dict(id_set)
 
 def filter_info(items, info):
     """

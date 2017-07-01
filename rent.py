@@ -152,17 +152,20 @@ class RentCrowl():
                     params['start'] = str(50 * i)
                     r = requests.get(url_base, params=params)
                     r = self._open_url(url_base, params=params)
-                    soup = BeautifulSoup(r.text, 'lxml')
-                    list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')
-                    small_batch = [self._extract_info(x) for x in list_table]
-                    batch_times = [x['time'] for x in small_batch]
-                    max_days = (date.today() - min(batch_times).date()).days
+                    try: 
+                        soup = BeautifulSoup(r.text, 'lxml')
+                        list_table = soup.find_all(name='table', class_='olt')[0].find_all(name='tr')
+                        small_batch = [self._extract_info(x) for x in list_table]
+                        batch_times = [x['time'] for x in small_batch]
+                        max_days = (date.today() - min(batch_times).date()).days
+                        item_batch.extend(small_batch)
+                        print 'o',
+                    except: 
+                        print 'x',
 
-                    item_batch.extend(small_batch)
                     cnt += 1
                     inner_cnt += 1
                     
-                    print 'o',
                     sys.stdout.flush()
             print ''
             self._insert_items(item_batch)
@@ -217,7 +220,7 @@ class RentCrowl():
                 r.raise_for_status()
                 return r
             except (requests.exceptions.RequestException, socket.timeout, ssl.SSLError) as e:
-                print "{}: try to open {}".format(err_cnt+1, r.url), e
+                print "{}: try to open".format(err_cnt+1), e
                 if err_cnt < 10:
                     err_cnt += 1
                     print "sleep for 5 second and try again"
@@ -263,7 +266,8 @@ if __name__ == "__main__":
     link_file = 'links'
 
     beijing_list = ['279962', '35417', '252218', '257523', '26926', 
-            '276176', 'sweethome', 'opking', 'xiaotanzi', 'zhufang']
+            '276176', 'sweethome', 'opking', 'xiaotanzi', 'zhufang', 
+            '550436','bjfangchan']
 
 
     urlbase_list = {'beijing': beijing_list}#, 'shenzhen': shenzhen_list}
