@@ -61,6 +61,21 @@ def init_db():
         "create table if not exists sp_params("
         "name text unique, value text)")
 
+
+    db.execute(
+        "create table if not exists items("
+        "id integer primary key autoincrement, "
+        "time timestamp, "
+        "title text, "
+        "link text unique, "
+        "status text default 'unread', "
+        "city text)")
+    db.execute("create index if not exists idx on items (time)")
+
+    conn.execute(
+        "create table if not exists sp_param("
+        "name text unique, value text)")
+
     db.commit()
 
 
