@@ -72,7 +72,7 @@ def init_db():
         "city text)")
     db.execute("create index if not exists idx on items (time)")
 
-    conn.execute(
+    db.execute(
         "create table if not exists sp_param("
         "name text unique, value text)")
 

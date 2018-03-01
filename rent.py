@@ -15,6 +15,8 @@ from os.path import isfile
 
 import sqlite3 
 
+SLEEP_TIME = 5 
+
 def date_parser(s):
     return pd.datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
 
@@ -66,6 +68,7 @@ class RentCrowl():
             self._get_sp_params()
 
             if self.status == 0:
+                time.sleep(SLEEP_TIME)
                 continue 
 
             elif self.status == 1:
@@ -73,6 +76,7 @@ class RentCrowl():
                 self.db.commit()
 
             if self.keywords is None:
+                time.sleep(SLEEP_TIME)
                 continue 
 
             for k, v in urlbase_list.items():
@@ -80,7 +84,7 @@ class RentCrowl():
                 print "scan for {}..".format(k)
                 self._scan_list(v)
 
-            time.sleep(5)
+            time.sleep(SLEEP_TIME)
 
     def _read_db(self):
         """
@@ -224,7 +228,7 @@ class RentCrowl():
                 if err_cnt < 10:
                     err_cnt += 1
                     print "sleep for 5 second and try again"
-                    time.sleep(5)
+                    time.sleep(SLEEP_TIME)
                 elif self._internet_on():
                     print "> 10 failures, skip"
                     return None
@@ -272,7 +276,7 @@ if __name__ == "__main__":
 
     urlbase_list = {'beijing': beijing_list}#, 'shenzhen': shenzhen_list}
 
-    rc = RentCrowl(data_file, link_file, delay_sec=4) 
+    rc = RentCrowl(data_file, link_file, delay_sec=SLEEP_TIME) 
     rc.crawl_items(urlbase_list)
 
 
