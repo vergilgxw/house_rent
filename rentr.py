@@ -10,14 +10,12 @@
     :license: BSD, see LICENSE for more details.
 """
 
+from collections import defaultdict
+import difflib
 import os
 from sqlite3 import dbapi2 as sqlite3
-from flask import Flask, request, session, g, redirect, url_for, abort, \
-     render_template, flash
+from flask import Flask, request, session, g, redirect, render_template
 
-import difflib
-import numpy as np
-from collections import defaultdict
 
 
 # create our little application :)
@@ -81,8 +79,8 @@ def init_db():
 
 
 def title_repeat(x, y):
-    s = difflib.SequenceMatcher(None, x['title'], y['title'])  
-    _, _, overlapped_len = s.find_longest_match(0, len(x['title']), 0, len(y['title'])) 
+    s = difflib.SequenceMatcher(None, x['title'], y['title'])
+    _, _, overlapped_len = s.find_longest_match(0, len(x['title']), 0, len(y['title']))
     return overlapped_len/float(len(x['title'])) > 0.5
 
 def folding(items, info):
@@ -98,7 +96,7 @@ def folding(items, info):
     for i, x in enumerate(items):
         if  fold_list[i]:
             continue
-         
+
         t = {key: x[key] for key in x.keys()}
         t['fold_num'] = 1
         ret.append(t)
@@ -106,7 +104,7 @@ def folding(items, info):
         id_set[tid].append(tid)
 
         for j, y in enumerate(items[i+1:]):
-            if title_repeat(x, y): 
+            if title_repeat(x, y):
                 t['fold_num'] += 1
                 id_set[tid].append(int(y['id']))
                 fold_list[i+j+1] = True
@@ -163,13 +161,13 @@ def display(db, info, status):
     items, id_set = folding(items, info)
     session['last_id_set'] = id_set
 
-    return items 
+    return items
 
 
 
 
 def get_filter_info(db):
-    
+
     db.commit()
 
     cur = db.execute("select value from params where name='in_words'")
@@ -212,7 +210,7 @@ def get_filter_info(db):
 
 def set_filter_info(db, info):
 
-    insert_info = [(k, v) for k, v in info.iteritems()] 
+    insert_info = [(k, v) for k, v in info.items()]
     db.executemany("insert or replace into params (name,  value) values (?, ?)", insert_info)
     db.commit()
 
@@ -257,21 +255,21 @@ def get_sp_info():
     cur = db.execute("select value from sp_params where name='status'")
     status = cur.fetchone()
     if status is None:
-        status = 0; 
+        status = 0;
     else:
         status = status[0]
 
     cur = db.execute("select value from sp_params where name='keywords'")
     kws_str = cur.fetchone()
     if kws_str is None:
-        kws = ''; 
+        kws = '';
     else:
         kws = kws_str[0]
 
     cur = db.execute("select value from sp_params where name='ndays'")
     ndays = cur.fetchone()
     if ndays is None:
-        ndays = 0; 
+        ndays = 0;
     else:
         ndays = max(int(ndays[0]), 0)
 
@@ -332,7 +330,7 @@ def submit_filter():
     info['nitems']      = request.form['nitems']
     if request.form['city'] != 'default':
         info['city']      = request.form['city']
-    
+
     set_filter_info(db, info)
 
     return redirect(request.referrer)
@@ -348,17 +346,15 @@ def augment_id(ids):
 
     return ret_ids
 
- 
-    
+
+
 @app.route('/set_type', methods=['POST'])
 def set_type():
     status_dict = {u'+未读': 'unread', u'+已读': 'read', u'+收藏': 'collection'}
-    ids = request.form.getlist('select') 
+    ids = request.form.getlist('select')
     ids = augment_id(ids)
     # return str(ids) + '\n' + str(session['last_id_set'])
     status = status_dict[request.form['submit']]
     db = get_db()
     set_status(db, status, ids)
     return redirect(request.referrer)
-        
-

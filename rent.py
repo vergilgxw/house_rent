@@ -52,7 +52,6 @@ class RentCrowl:
         self._last_open_time = None
 
         self.city = None
-        self.database = None
 
         self.keywords = None
         self.ndays = None
@@ -282,7 +281,7 @@ LINK_FILE = 'links'
 
 BEIJING_LIST = [
     '279962', '35417', '252218', '257523', '26926', '276176',
-    'sweethome', 'opking', 'xiaotanzi', 'zhufang', '550436', 'bjfangchan']
+    'sweethome', 'opking', 'zhufang', '550436', 'bjfangchan']
 
 
 URLBASE_LIST = {'beijing': BEIJING_LIST}#, 'shenzhen': shenzhen_list}
